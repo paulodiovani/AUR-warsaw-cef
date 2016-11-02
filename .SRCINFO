@@ -8,6 +8,7 @@ pkgbase = warsaw
 	depends = curl
 	depends = nss
 	provides = warsaw
+	conflicts = warsaw
 	source = https://cloud.gastecnologia.com.br/cef/warsaw/install/GBPCEFwr64.deb
 	source = warsaw.service
 	md5sums = 723eb9b0a3a3f514b8c1f6b3dcc958eb

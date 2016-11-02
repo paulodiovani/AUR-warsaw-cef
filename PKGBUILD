@@ -10,6 +10,7 @@ url="https://internetbanking.caixa.gov.br/sinbc/nb/login/redirecionaDispSeguranc
 license=('unknown')
 depends=('openssl>=1.0' 'curl' 'nss')
 provides=('warsaw')
+conflicts=('warsaw')
 source=(
     "https://cloud.gastecnologia.com.br/cef/$pkgname/install/GBPCEFwr64.deb"
     'warsaw.service'
