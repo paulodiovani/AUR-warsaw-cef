@@ -1,0 +1,243 @@
+#!/bin/bash
+
+function x11_setup() {
+  export DISPLAY=:0.0
+  # Find ~/.Xauthority
+  for user in `who | cut -d' ' -f1 | sort | uniq`
+  do
+      XAUTHORITY_FILE="$(eval echo ~${user})/.Xauthority"
+      if [ -f "${XAUTHORITY_FILE}" ]
+      then
+        export XAUTHORITY="${XAUTHORITY_FILE}"
+      fi
+  done
+}
+
+pre_install() {
+  ATENCAO="Atencao"
+  BAD_ARCH="Pacote destinado a sistemas 32 bits, por favor faca o download do pacote correto.\nObrigado."
+  CLOSE_BROWSER_MESSAGE="Por favor feche todas as janelas do Firefox e clique em Ok.\nOu clique em Cancelar para interromper a instalacao."
+
+  # is this a x86 installer
+  if [ "amd64" == "i386" ]
+  then
+    # is this a 64 bit system
+    if [ "$(getconf LONG_BIT | grep 64)" ]
+    then
+     if [ -z "$DISPLAY" ] || [ -z "$XAUTHORITY" ] ; then x11_setup; fi
+
+     if [ -t 1 ]
+     then
+      echo -e "${BAD_ARCH}" | xmessage -file - -title "${ATENCAO}" -buttons Ok:0 -default Ok -nearmouse
+     fi
+     exit 1
+    fi
+  fi
+
+  # is firefox running?
+  while [ "$(ps -eo stat,cmd | grep -i "firefox" | grep -vi "^Z.*firefox" | grep -v grep)" ]
+  do
+    if [ -z "$DISPLAY" ] || [ -z "$XAUTHORITY" ] ; then x11_setup; fi
+    if [ -t 1 ]
+    then
+      echo -e "${CLOSE_BROWSER_MESSAGE}" | xmessage -file - -title "${ATENCAO}" -nearmouse -buttons Ok:0,Cancel:2
+    else
+      echo "${CLOSE_BROWSER_MESSAGE}"
+      sleep 1s
+    fi
+    if [ $? -ne 0 ]
+    then
+      exit 2
+    fi
+  done
+}
+
+post_install() {
+  if [ ! -f /usr/local/etc/warsaw/ws.dat ]
+  then
+    pushd /var/tmp
+    openssl genrsa -des3 -passout pass:$(< /sys/class/dmi/id/modalias) -out root_ca.key 4096
+    openssl req -new -x509 -days 3650 -key root_ca.key -passin pass:$(< /sys/class/dmi/id/modalias) -out root_ca.cer -config /usr/local/etc/warsaw/openssl.conf -subj "/CN=Warsaw Personal CA"
+    openssl genrsa -des3 -passout pass:$(< /sys/class/dmi/id/modalias) -out localhost.key 4096
+    openssl req -new -key localhost.key -passin pass:$(< /sys/class/dmi/id/modalias) -out localhost.csr -config /usr/local/etc/warsaw/openssl.conf -subj "/CN=127.0.0.1"
+    openssl x509 -req -days 3650 -in localhost.csr -CA root_ca.cer -CAkey root_ca.key -passin pass:$(< /sys/class/dmi/id/modalias) -set_serial 1 -out localhost.crt
+    cat localhost.crt localhost.key > /usr/local/etc/warsaw/ws.dat
+
+    #installing on firefox
+    for usr_profile in $(ls -1 /home)
+    do
+      if [ ! -d /home/$usr_profile ]
+      then
+        continue
+      fi
+      if [ ! -f /home/$usr_profile/.mozilla/firefox/profiles.ini ]
+      then
+        continue
+      fi
+      for line in $(cat /home/$usr_profile/.mozilla/firefox/profiles.ini)
+      do
+        field_name=${line%=*}
+        if [ "$field_name" = "Path" ]
+        then
+          profile=${line#*=}
+          if [ -d /home/$usr_profile/.mozilla/firefox/$profile ]
+          then
+            su -l -c "certutil -D -n \"Warsaw Personal CA\" -d /home/$usr_profile/.mozilla/firefox/$profile" $usr_profile
+            su -l -c "certutil -A -n \"Warsaw Personal CA\" -t ""TCu,Cu,Tuw"" -i /var/tmp/root_ca.cer -d /home/$usr_profile/.mozilla/firefox/$profile" $usr_profile
+          fi
+        fi
+      done
+    done
+
+    #installing on system (Chrome, etc.)
+    for usr_profile in $(ls -1 /home)
+    do
+      if [ ! -d /home/$usr_profile ]
+      then
+        continue
+      fi
+      if [ ! -d /home/$usr_profile/.pki/nssdb ]
+      then
+        continue
+      fi
+      su -l -c "certutil -D -n \"Warsaw Personal CA\" -d sql:/home/$usr_profile/.pki/nssdb" $usr_profile
+      su -l -c "certutil -A -n \"Warsaw Personal CA\" -t ""TCu,Cu,Tuw"" -i /var/tmp/root_ca.cer -d sql:/home/$usr_profile/.pki/nssdb" $usr_profile
+    done
+
+    rm -f /usr/local/etc/warsaw/openssl.conf root_ca.key root_ca.cer localhost.key localhost.csr localhost.crt
+    popd
+  fi
+
+  #All users can run
+  chmod +x /usr/local/bin/warsaw/core
+  chmod +x /etc/xdg/autostart/warsaw.desktop
+
+  #Only root can run
+  chmod 0744 /usr/local/bin/warsaw/uninstall_core
+
+  touch /usr/local/etc/warsaw/local.cfg
+  chmod 0666 /usr/local/etc/warsaw/local.cfg
+
+  systemctl enable warsaw
+
+  pushd /usr/local/lib/warsaw
+  enable -f ./wslbmid.so migratecache
+  for usr_profile in $(ls -1 /home)
+  do
+    if [ ! -d /home/$usr_profile ]
+    then
+      continue
+    fi
+    migratecache /home/$usr_profile
+  done
+  enable -d migratecache
+  popd
+
+  if [ -z "$DISPLAY" ] || [ -z "$XAUTHORITY" ] ; then x11_setup; fi
+
+  systemctl start warsaw
+
+  for user_name in $(who | cut -d' ' -f1 | sort | uniq)
+  do
+    if [ "$user_name" == "root" ]
+    then
+      continue
+    fi
+    su -l -c "/usr/local/bin/warsaw/core" $user_name
+  done
+
+  fc-cache -fv
+}
+
+pre_upgrade() {
+  pre_install
+}
+
+post_upgrade() {
+  post_install
+}
+
+pre_remove() {
+  ATENCAO="Atencao"
+  CLOSE_BROWSER_MESSAGE="Por favor feche todas as janelas do Firefox e clique em Ok.\nOu clique em Cancelar para interromper a desinstalacao."
+
+  # is firefox running?
+  while [ "$(ps -eo stat,cmd | grep -i "firefox" | grep -vi "^Z.*firefox" | grep -v grep)" ]
+  do
+    if [ -z "$DISPLAY" ] || [ -z "$XAUTHORITY" ] ; then x11_setup; fi
+    if [ -t 1 ]
+    then
+      echo -e "${CLOSE_BROWSER_MESSAGE}" | xmessage -file - -title "${ATENCAO}" -nearmouse -buttons Ok:0,Cancel:2
+    else
+      echo "${CLOSE_BROWSER_MESSAGE}"
+      sleep 1s
+    fi
+    if [ $? -ne 0 ]
+    then
+      exit 2
+    fi
+  done
+
+  #uninstalling on firefox
+  for usr_profile in $(ls -1 /home)
+  do
+    if [ ! -d /home/$usr_profile ]
+    then
+      continue
+    fi
+    if [ ! -f /home/$usr_profile/.mozilla/firefox/profiles.ini ]
+    then
+      continue
+    fi
+    for line in $(cat /home/$usr_profile/.mozilla/firefox/profiles.ini)
+    do
+      field_name=${line%=*}
+      if [ "$field_name" = "Path" ]
+      then
+        profile=${line#*=}
+        if [ -d /home/$usr_profile/.mozilla/firefox/$profile ]
+        then
+          su -l -c "certutil -D -n \"Warsaw Personal CA\" -d /home/$usr_profile/.mozilla/firefox/$profile" $usr_profile
+        fi
+      fi
+    done
+  done
+
+  #uninstalling on system (Chrome, etc.)
+  for usr_profile in $(ls -1 /home)
+  do
+    if [ ! -d /home/$usr_profile ]
+    then
+      continue
+    fi
+    if [ ! -d /home/$usr_profile/.pki/nssdb ]
+    then
+      continue
+    fi
+    su -l -c "certutil -D -n \"Warsaw Personal CA\" -d sql:/home/$usr_profile/.pki/nssdb" $usr_profile
+  done
+
+  chmod 0744 /usr/local/bin/warsaw/uninstall_core
+  /usr/local/bin/warsaw/uninstall_core
+  systemctl stop warsaw
+  sleep 5s
+  killall core
+  systemctl disable warsaw
+  rm /tmp/wi*
+  rm /var/run/shm/sem.WS_*
+  rm /var/run/shm/sem.wi*
+  rm /var/run/shm/wi*
+
+  #removing the cert because it was removed from browsers
+  rm /usr/local/etc/warsaw/ws.dat
+}
+
+post_remove() {
+  rm -rf /usr/local/bin/warsaw
+  rm -rf /usr/local/lib/warsaw
+  rm -rf /usr/local/etc/warsaw
+  rm -f /usr/share/fonts/truetype/Warsaw\ Bold.ttf
+  rm -rf /tmp/upd
+
+  fc-cache -fv
+}
