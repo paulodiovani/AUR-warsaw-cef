@@ -1,7 +1,7 @@
 # Maintainer: Paulo Diovani <paulo@diovani.com>
 # Debian Package Maintainer: GAS Tecnologia <info@gastecnologia.com.br>
 
-pkgname=warsaw
+pkgname=warsaw-cef
 pkgver=1.3.0
 pkgrel=1
 pkgdesc=""
@@ -11,9 +11,9 @@ license=('unknown')
 depends=('openssl>=1.0' 'curl' 'nss')
 provides=('warsaw')
 conflicts=('warsaw')
-install='warsaw.install'
+install='warsaw-cef.install'
 source=(
-    "https://cloud.gastecnologia.com.br/cef/$pkgname/install/GBPCEFwr64.deb"
+    'https://cloud.gastecnologia.com.br/cef/warsaw/install/GBPCEFwr64.deb'
     'warsaw.service'
 )
 md5sums=(
