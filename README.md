@@ -17,13 +17,6 @@ cd warsaw-cef
 makepkg -sri
 ```
 
-You may want to start/enable the service with.
-
-```console
-systemctl enable warsaw
-systemctl start warsaw
-```
-
 [1]: https://www.archlinux.org
 [2]: http://www.gastecnologia.com/suporte/warsaw
 [3]: http://www.caixa.gov.br/
