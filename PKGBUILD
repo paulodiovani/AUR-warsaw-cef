@@ -6,7 +6,7 @@ pkgver=1.3.0
 pkgrel=1
 pkgdesc=""
 arch=('x86_64')
-url="https://guardiao.itau.com.br/warsaw"
+url="https://internetbanking.caixa.gov.br/sinbc/nb/login/redirecionaDispSeguranca"
 license=('unknown')
 depends=('openssl>=1.0' 'curl' 'nss')
 provides=('warsaw')
